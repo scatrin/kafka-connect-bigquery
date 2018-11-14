@@ -106,8 +106,8 @@ public class BigQuerySinkConnectorTest {
 
     verify(bigQuery).getTable(existingTable);
     verify(bigQuery).getTable(nonExistingTable);
-    verify(schemaManager, never()).createTable(existingTable, existingTableTopic);
-    verify(schemaManager).createTable(nonExistingTable, nonExistingTableTopic);
+    verify(schemaManager, never()).createTable(existingTable, existingTableTopic, null);
+    verify(schemaManager).createTable(nonExistingTable, nonExistingTableTopic, null);
   }
 
   @Test
@@ -133,7 +133,7 @@ public class BigQuerySinkConnectorTest {
     BigQuerySinkConnector testConnector = new BigQuerySinkConnector(bigQuery);
     testConnector.start(properties);
 
-    verify(schemaManager, never()).createTable(any(TableId.class), any(String.class));
+    verify(schemaManager, never()).createTable(any(TableId.class), any(String.class), null);
 
     for (String table : tables) {
       verify(bigQuery).getTable(TableId.of(dataset, table));

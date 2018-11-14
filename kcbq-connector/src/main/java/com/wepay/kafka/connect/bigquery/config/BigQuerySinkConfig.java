@@ -100,6 +100,15 @@ public class BigQuerySinkConfig extends AbstractConfig {
   private static final String PROJECT_DOC =
       "The BigQuery project to write to";
 
+  public static final String PARTITIONING_FIELD_CONFIG =                     "partitioningField";
+  private static final ConfigDef.Type PARTITIONING_FIELD_TYPE =              ConfigDef.Type.LIST;
+  private static final Object PARTITIONING_FIELD_DEFAULT =                   Collections.emptyList();
+  private static final ConfigDef.Importance PARTITIONING_FIELD_IMPORTANCE =  ConfigDef.Importance.HIGH;
+  private static final String PARTITIONING_FIELD_DOC =
+      "The name of the field to use for partitioning for each topic. If set, the value of that field will be used "
+      + "for partitioning of records from that topic. If not set for a topic, the default behaviour will be used. "
+      + "(Form of <topic regex>=<field name>)";
+
   public static final String DATASETS_CONFIG =                     "datasets";
   private static final ConfigDef.Type DATASETS_TYPE =              ConfigDef.Type.LIST;
   private static final Object DATASETS_DEFAULT =                   ConfigDef.NO_DEFAULT_VALUE;
@@ -256,7 +265,12 @@ public class BigQuerySinkConfig extends AbstractConfig {
             CONVERT_DOUBLE_SPECIAL_VALUES_DEFAULT,
             CONVERT_DOUBLE_SPECIAL_VALUES_IMPORTANCE,
             CONVERT_DOUBLE_SPECIAL_VALUES_DOC
-         );
+         ).define(
+            PARTITIONING_FIELD_CONFIG,
+            PARTITIONING_FIELD_TYPE,
+            PARTITIONING_FIELD_DEFAULT,
+            PARTITIONING_FIELD_IMPORTANCE,
+            PARTITIONING_FIELD_DOC);
   }
 
   @SuppressWarnings("unchecked")
@@ -368,7 +382,8 @@ public class BigQuerySinkConfig extends AbstractConfig {
       List<Map.Entry<Pattern, String>> patterns,
       List<String> values,
       String valueProperty,
-      String patternProperty) {
+      String patternProperty,
+      boolean optional) {
     Map<String, String> matches = new HashMap<>();
     for (String value : values) {
       String match = null;
@@ -389,14 +404,17 @@ public class BigQuerySinkConfig extends AbstractConfig {
         }
       }
       if (match == null) {
-        throw new ConfigException(
-            "Value '" + value
-            + "' for property '" + valueProperty
-            + "' failed to match any of the provided " + patternProperty
-            + " regexes"
-        );
+        if (!optional) {
+          throw new ConfigException(
+              "Value '" + value
+              + "' for property '" + valueProperty
+              + "' failed to match any of the provided " + patternProperty
+              + " regexes"
+          );
+        }
+      } else {
+        matches.put(value, match);
       }
-      matches.put(value, match);
     }
     return matches;
   }
@@ -412,9 +430,26 @@ public class BigQuerySinkConfig extends AbstractConfig {
         getSinglePatterns(DATASETS_CONFIG),
         getList(TOPICS_CONFIG),
         TOPICS_CONFIG,
-        DATASETS_CONFIG
+        DATASETS_CONFIG,
+        false
     );
   }
+
+  /**
+   * Return a Map detailing which BigQuery dataset each topic should write to.
+   *
+   * @return A Map associating Kafka topic names to BigQuery dataset.
+   */
+  public Map<String, String> getTopicsToPartitioningField() {
+    return getSingleMatches(
+            getSinglePatterns(PARTITIONING_FIELD_CONFIG),
+            getList(TOPICS_CONFIG),
+            TOPICS_CONFIG,
+            PARTITIONING_FIELD_CONFIG,
+            true
+    );
+  }
+
 
   /**
    * Return a new instance of the configured Schema Converter.

@@ -21,11 +21,7 @@ package com.wepay.kafka.connect.bigquery;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.google.cloud.bigquery.BigQuery;
-import com.google.cloud.bigquery.Field;
-import com.google.cloud.bigquery.LegacySQLTypeName;
-import com.google.cloud.bigquery.TableId;
-import com.google.cloud.bigquery.TableInfo;
+import com.google.cloud.bigquery.*;
 
 import com.wepay.kafka.connect.bigquery.api.SchemaRetriever;
 import com.wepay.kafka.connect.bigquery.convert.SchemaConverter;
@@ -62,9 +58,43 @@ public class SchemaManagerTest {
     when(mockSchemaConverter.convertSchema(mockKafkaSchema)).thenReturn(fakeBigQuerySchema);
     when(mockKafkaSchema.doc()).thenReturn(testDoc);
 
-    TableInfo tableInfo = schemaManager.constructTableInfo(tableId, mockKafkaSchema);
+    TableInfo tableInfo = schemaManager.constructTableInfo(tableId, mockKafkaSchema, null);
 
     Assert.assertEquals("Kafka doc does not match BigQuery table description",
                         testDoc, tableInfo.getDescription());
+  }
+
+  @Test
+  public void testPartitioningField() {
+    final String testTableName = "testTable";
+    final String testDatasetName = "testDataset";
+    final String testDoc = "test doc";
+    final TableId tableId = TableId.of(testDatasetName, testTableName);
+
+    SchemaRetriever mockSchemaRetriever = mock(SchemaRetriever.class);
+    @SuppressWarnings("unchecked")
+    SchemaConverter<com.google.cloud.bigquery.Schema> mockSchemaConverter =
+            (SchemaConverter<com.google.cloud.bigquery.Schema>) mock(SchemaConverter.class);
+    BigQuery mockBigQuery = mock(BigQuery.class);
+
+    SchemaManager schemaManager = new SchemaManager(mockSchemaRetriever,
+            mockSchemaConverter,
+            mockBigQuery);
+
+    Schema mockKafkaSchema = mock(Schema.class);
+    // we would prefer to mock this class, but it is final.
+    final String mock_field = "mock field";
+    com.google.cloud.bigquery.Schema fakeBigQuerySchema =
+            com.google.cloud.bigquery.Schema.of(Field.of(mock_field, LegacySQLTypeName.STRING));
+
+    when(mockSchemaConverter.convertSchema(mockKafkaSchema)).thenReturn(fakeBigQuerySchema);
+    when(mockKafkaSchema.doc()).thenReturn(testDoc);
+
+    TableInfo tableInfo = schemaManager.constructTableInfo(tableId, mockKafkaSchema, mock_field);
+
+    final StandardTableDefinition definition = tableInfo.getDefinition();
+    Assert.assertNotNull(definition.getTimePartitioning());
+    Assert.assertEquals("Kafka doc does not match BigQuery table description",
+            mock_field, definition.getTimePartitioning().getField());
   }
 }

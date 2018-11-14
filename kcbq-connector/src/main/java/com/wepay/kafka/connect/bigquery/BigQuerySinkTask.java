@@ -49,6 +49,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
@@ -57,11 +58,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.time.ZoneId;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -80,6 +78,7 @@ public class BigQuerySinkTask extends SinkTask {
   private BigQuerySinkTaskConfig config;
   private RecordConverter<Map<String, Object>> recordConverter;
   private Map<String, TableId> topicsToBaseTableIds;
+  private Map<String, String> topicsToPartitioningFieldNames;
   private boolean useMessageTimeDatePartitioning;
 
   private TopicPartitionManager topicPartitionManager;
@@ -142,15 +141,24 @@ public class BigQuerySinkTask extends SinkTask {
     TableId baseTableId = topicsToBaseTableIds.get(record.topic());
 
     PartitionedTableId.Builder builder = new PartitionedTableId.Builder(baseTableId);
-    if (useMessageTimeDatePartitioning) {
-      if (record.timestampType() == TimestampType.NO_TIMESTAMP_TYPE) {
-        throw new ConnectException(
-            "Message has no timestamp type, cannot use message timestamp to partition.");
+    final String partitioningField = topicsToPartitioningFieldNames.get(record.topic());
+    if (partitioningField != null) {
+      Object partitioningFieldValue = Objects.requireNonNull(((Struct) record.value()).get(partitioningField));
+      if (partitioningFieldValue instanceof Date) {
+        builder.setDayPartition(((Date)partitioningFieldValue).toInstant().atZone(ZoneId.systemDefault()).toLocalDate());
+      } else {
+        builder.setPartition(partitioningFieldValue.toString());
       }
-
-      builder.setDayPartition(record.timestamp());
     } else {
-      builder.setDayPartitionForNow();
+      if (useMessageTimeDatePartitioning) {
+        if (record.timestampType() == TimestampType.NO_TIMESTAMP_TYPE) {
+          throw new ConnectException(
+                  "Message has no timestamp type, cannot use message timestamp to partition.");
+        }
+        builder.setDayPartition(record.timestamp());
+      } else {
+        builder.setDayPartitionForNow();
+      }
     }
 
     return builder.build();
@@ -195,7 +203,7 @@ public class BigQuerySinkTask extends SinkTask {
                 recordConverter);
           } else {
             tableWriterBuilder =
-                new TableWriter.Builder(bigQueryWriter, table, record.topic(), recordConverter);
+                new TableWriter.Builder(bigQueryWriter, table, record.topic(), recordConverter, topicsToPartitioningFieldNames.get(record.topic()));
           }
           tableWriterBuilders.put(table, tableWriterBuilder);
         }
@@ -297,6 +305,7 @@ public class BigQuerySinkTask extends SinkTask {
     topicPartitionManager = new TopicPartitionManager();
     useMessageTimeDatePartitioning =
         config.getBoolean(config.BIGQUERY_MESSAGE_TIME_PARTITIONING_CONFIG);
+    topicsToPartitioningFieldNames = config.getTopicsToPartitioningField();
     if (hasGCSBQTask) {
       startGCSToBQLoadTask();
     }

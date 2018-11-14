@@ -72,12 +72,13 @@ public abstract class BigQueryWriter {
    * @param tableId The PartitionedTableId.
    * @param rows The rows to write.
    * @param topic The Kafka topic that the row data came from.
+   * @param partitioningField
    * @return map from failed row id to the BigQueryError.
    */
   protected abstract Map<Long, List<BigQueryError>> performWriteRequest(
-      PartitionedTableId tableId,
-      List<InsertAllRequest.RowToInsert> rows,
-      String topic)
+          PartitionedTableId tableId,
+          List<InsertAllRequest.RowToInsert> rows,
+          String topic, String partitioningField)
       throws BigQueryException, BigQueryConnectException;
 
   /**
@@ -98,11 +99,12 @@ public abstract class BigQueryWriter {
    * @param table The BigQuery table to write the rows to.
    * @param rows The rows to write.
    * @param topic The Kafka topic that the row data came from.
+   * @param partitioningField
    * @throws InterruptedException if interrupted.
    */
   public void writeRows(PartitionedTableId table,
                         List<InsertAllRequest.RowToInsert> rows,
-                        String topic)
+                        String topic, String partitioningField)
       throws BigQueryConnectException, BigQueryException, InterruptedException {
     logger.debug("writing {} row{} to table {}", rows.size(), rows.size() != 1 ? "s" : "", table);
 
@@ -115,7 +117,7 @@ public abstract class BigQueryWriter {
         waitRandomTime();
       }
       try {
-        failedRowsMap = performWriteRequest(table, rows, topic);
+        failedRowsMap = performWriteRequest(table, rows, topic, partitioningField);
         if (failedRowsMap.isEmpty()) {
           // table insertion completed with no reported errors
           return;

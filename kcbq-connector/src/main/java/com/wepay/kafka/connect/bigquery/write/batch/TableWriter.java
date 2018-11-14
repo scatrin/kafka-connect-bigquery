@@ -48,21 +48,24 @@ public class TableWriter implements Runnable {
   private final PartitionedTableId table;
   private final List<RowToInsert> rows;
   private final String topic;
+  private final String partitioningField;
 
   /**
    * @param writer the {@link BigQueryWriter} to use.
    * @param table the BigQuery table to write to.
    * @param rows the rows to write.
    * @param topic the kafka source topic of this data.
+   * @param partitioningField
    */
   public TableWriter(BigQueryWriter writer,
                      PartitionedTableId table,
                      List<RowToInsert> rows,
-                     String topic) {
+                     String topic, String partitioningField) {
     this.writer = writer;
     this.table = table;
     this.rows = rows;
     this.topic = topic;
+    this.partitioningField = partitioningField;
   }
 
   @Override
@@ -77,7 +80,7 @@ public class TableWriter implements Runnable {
         List<RowToInsert> currentBatch =
             rows.subList(currentIndex, Math.min(currentIndex + currentBatchSize, rows.size()));
         try {
-          writer.writeRows(table, currentBatch, topic);
+          writer.writeRows(table, currentBatch, topic, partitioningField);
           currentIndex += currentBatchSize;
           successCount++;
         } catch (BigQueryException err) {
@@ -152,18 +155,21 @@ public class TableWriter implements Runnable {
     private List<RowToInsert> rows;
 
     private RecordConverter<Map<String, Object>> recordConverter;
+    private final String partitioningField;
 
     /**
      * @param writer the BigQueryWriter to use
      * @param table the BigQuery table to write to.
      * @param topic the kafka source topic associated with the given table.
      * @param recordConverter the record converter used to convert records to rows
+     * @param partitioningField
      */
     public Builder(BigQueryWriter writer, PartitionedTableId table, String topic,
-                   RecordConverter<Map<String, Object>> recordConverter) {
+                   RecordConverter<Map<String, Object>> recordConverter, String partitioningField) {
       this.writer = writer;
       this.table = table;
       this.topic = topic;
+      this.partitioningField = partitioningField;
 
       this.rows = new ArrayList<>();
 
@@ -194,7 +200,7 @@ public class TableWriter implements Runnable {
      * @return a TableWriter containing the given writer, table, topic, and all added rows.
      */
     public TableWriter build() {
-      return new TableWriter(writer, table, rows, topic);
+      return new TableWriter(writer, table, rows, topic, partitioningField);
     }
   }
 }

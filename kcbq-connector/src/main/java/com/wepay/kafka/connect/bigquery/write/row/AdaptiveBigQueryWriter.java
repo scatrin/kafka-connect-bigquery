@@ -73,13 +73,13 @@ public class AdaptiveBigQueryWriter extends BigQueryWriter {
    * Sends the request to BigQuery, then checks the response to see if any errors have occurred. If
    * any have, and all errors can be blamed upon invalid columns in the rows sent, attempts to
    * update the schema of the table in BigQuery and then performs the same write request.
-   * @see BigQueryWriter#performWriteRequest(PartitionedTableId, List, String)
+   * @see BigQueryWriter#performWriteRequest(PartitionedTableId, List, String, String)
    */
   @Override
   public Map<Long, List<BigQueryError>> performWriteRequest(
-      PartitionedTableId tableId,
-      List<InsertAllRequest.RowToInsert> rows,
-      String topic) {
+          PartitionedTableId tableId,
+          List<InsertAllRequest.RowToInsert> rows,
+          String topic, String partitioningField) {
     InsertAllResponse writeResponse = null;
     InsertAllRequest request = null;
 
@@ -90,11 +90,11 @@ public class AdaptiveBigQueryWriter extends BigQueryWriter {
       // BigQuery schema updates taking up to two minutes to take effect
       if (writeResponse.hasErrors()
               && onlyContainsInvalidSchemaErrors(writeResponse.getInsertErrors())) {
-        attemptSchemaUpdate(tableId, topic);
+        attemptSchemaUpdate(tableId, topic, partitioningField);
       }
     } catch (BigQueryException exception) {
       if (isTableMissingSchema(exception)) {
-        attemptSchemaUpdate(tableId, topic);
+        attemptSchemaUpdate(tableId, topic, partitioningField);
       } else {
         throw exception;
       }
@@ -127,9 +127,9 @@ public class AdaptiveBigQueryWriter extends BigQueryWriter {
     return new HashMap<>();
   }
 
-  private void attemptSchemaUpdate(PartitionedTableId tableId, String topic) {
+  private void attemptSchemaUpdate(PartitionedTableId tableId, String topic, String partitioningField) {
     try {
-      schemaManager.updateSchema(tableId.getBaseTableId(), topic);
+      schemaManager.updateSchema(tableId.getBaseTableId(), topic, partitioningField);
     } catch (BigQueryException exception) {
       throw new BigQueryConnectException(
           "Failed to update table schema for: " + tableId.getBaseTableId(), exception);

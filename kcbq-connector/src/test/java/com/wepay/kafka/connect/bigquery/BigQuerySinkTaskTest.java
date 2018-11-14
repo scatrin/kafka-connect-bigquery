@@ -57,6 +57,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 
 import java.util.Collections;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -186,6 +187,78 @@ public class BigQuerySinkTaskTest {
 
     verify(bigQuery, times(1)).insertAll(argument.capture());
     assertEquals("test-topic$20171026", argument.getValue().getTable().getTable());
+  }
+
+  @Test
+  public void testPutWhenPartitioningOnDateField() {
+    final String topic = "test-topic";
+
+    Map<String, String> properties = propertiesFactory.getProperties();
+    properties.put(BigQuerySinkConfig.TOPICS_CONFIG, topic);
+    properties.put(BigQuerySinkConfig.DATASETS_CONFIG, ".*=scratch");
+    properties.put(BigQuerySinkConfig.PARTITIONING_FIELD_CONFIG, ".*=dateField");
+
+    BigQuery bigQuery = mock(BigQuery.class);
+    Storage storage = mock(Storage.class);
+    SinkTaskContext sinkTaskContext = mock(SinkTaskContext.class);
+    InsertAllResponse insertAllResponse = mock(InsertAllResponse.class);
+
+    when(bigQuery.insertAll(anyObject())).thenReturn(insertAllResponse);
+    when(insertAllResponse.hasErrors()).thenReturn(false);
+
+    BigQuerySinkTask testTask = new BigQuerySinkTask(bigQuery, null, storage);
+    testTask.initialize(sinkTaskContext);
+    testTask.start(properties);
+    final Schema valueSchema = SchemaBuilder
+            .struct()
+            .field("dateField", SchemaBuilder.int32().name("org.apache.kafka.connect.data.Date").build())
+            .field("valueField", Schema.STRING_SCHEMA)
+            .build();
+    final Struct value = new Struct(valueSchema);
+    value.put("dateField", new Date(1509007584334L));
+    value.put("valueField", "Hello");
+    testTask.put(Collections.singletonList(spoofSinkRecord(topic, valueSchema, value)));
+    testTask.flush(Collections.emptyMap());
+    ArgumentCaptor<InsertAllRequest> argument = ArgumentCaptor.forClass(InsertAllRequest.class);
+
+    verify(bigQuery, times(1)).insertAll(argument.capture());
+    assertEquals("test-topic$20171026", argument.getValue().getTable().getTable());
+  }
+
+  @Test
+  public void testPutWhenPartitioningOnStringField() {
+    final String topic = "test-topic";
+
+    Map<String, String> properties = propertiesFactory.getProperties();
+    properties.put(BigQuerySinkConfig.TOPICS_CONFIG, topic);
+    properties.put(BigQuerySinkConfig.DATASETS_CONFIG, ".*=scratch");
+    properties.put(BigQuerySinkConfig.PARTITIONING_FIELD_CONFIG, ".*=valueField");
+
+    BigQuery bigQuery = mock(BigQuery.class);
+    Storage storage = mock(Storage.class);
+    SinkTaskContext sinkTaskContext = mock(SinkTaskContext.class);
+    InsertAllResponse insertAllResponse = mock(InsertAllResponse.class);
+
+    when(bigQuery.insertAll(anyObject())).thenReturn(insertAllResponse);
+    when(insertAllResponse.hasErrors()).thenReturn(false);
+
+    BigQuerySinkTask testTask = new BigQuerySinkTask(bigQuery, null, storage);
+    testTask.initialize(sinkTaskContext);
+    testTask.start(properties);
+    final Schema valueSchema = SchemaBuilder
+            .struct()
+            .field("dateField", SchemaBuilder.int32().name("org.apache.kafka.connect.data.Date").build())
+            .field("valueField", Schema.STRING_SCHEMA)
+            .build();
+    final Struct value = new Struct(valueSchema);
+    value.put("dateField", new Date(1509007584334L));
+    value.put("valueField", "Hello");
+    testTask.put(Collections.singletonList(spoofSinkRecord(topic, valueSchema, value)));
+    testTask.flush(Collections.emptyMap());
+    ArgumentCaptor<InsertAllRequest> argument = ArgumentCaptor.forClass(InsertAllRequest.class);
+
+    verify(bigQuery, times(1)).insertAll(argument.capture());
+    assertEquals("test-topic$Hello", argument.getValue().getTable().getTable());
   }
 
   // Make sure a connect exception is thrown when the message has no timestamp type

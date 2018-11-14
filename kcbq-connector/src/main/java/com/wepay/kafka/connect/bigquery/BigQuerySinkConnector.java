@@ -105,15 +105,16 @@ public class BigQuerySinkConnector extends SinkConnector {
   }
 
   private void ensureExistingTables(
-      BigQuery bigQuery,
-      SchemaManager schemaManager,
-      Map<String, TableId> topicsToTableIds) {
+          BigQuery bigQuery,
+          SchemaManager schemaManager,
+          Map<String, TableId> topicsToTableIds,
+          Map<String, String> topicsToPartitioningField) {
     for (Map.Entry<String, TableId> topicToTableId : topicsToTableIds.entrySet()) {
       String topic = topicToTableId.getKey();
       TableId tableId = topicToTableId.getValue();
       if (bigQuery.getTable(tableId) == null) {
         logger.info("Table {} does not exist; attempting to create", tableId);
-        schemaManager.createTable(tableId, topic);
+        schemaManager.createTable(tableId, topic, topicsToPartitioningField.get(topic));
       }
     }
   }
@@ -136,7 +137,7 @@ public class BigQuerySinkConnector extends SinkConnector {
     Map<String, TableId> topicsToTableIds = TopicToTableResolver.getTopicsToTables(config);
     if (config.getBoolean(config.TABLE_CREATE_CONFIG)) {
       SchemaManager schemaManager = getSchemaManager(bigQuery);
-      ensureExistingTables(bigQuery, schemaManager, topicsToTableIds);
+      ensureExistingTables(bigQuery, schemaManager, topicsToTableIds, config.getTopicsToPartitioningField());
     } else {
       ensureExistingTables(bigQuery, topicsToTableIds);
     }
